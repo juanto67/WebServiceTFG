@@ -1,5 +1,7 @@
 package com.tfg.EPS0375.WebServiceTFG.controller;
 
+import com.tfg.EPS0375.WebServiceTFG.service.ServiceESPInfo;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
@@ -7,10 +9,17 @@ import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 
-@RestController()
+@RestController
 @RequestMapping("/controllerESP")
 public class ControllerESP {
-    public int idEsp = 1;
+
+    public final ServiceESPInfo serviceESPInfo;
+
+    @Autowired
+    public ControllerESP(ServiceESPInfo serviceESPInfo) {
+        this.serviceESPInfo = serviceESPInfo;
+    }
+
     @PostMapping("/newImage")
     public ResponseEntity<String> catchNewImage(
             @RequestBody byte[] jpeg,
@@ -27,21 +36,19 @@ public class ControllerESP {
 
             Files.write(output, jpeg);
 
-            return ResponseEntity.ok(
-                    "Imagen JPEG guardada correctamente: " + output
-            );
+            return ResponseEntity.ok("Imagen JPEG guardada correctamente: " + output);
 
         } catch (IOException exception) {
 
-            return ResponseEntity.internalServerError()
-                    .body("No se pudo guardar la imagen");
+            return ResponseEntity.internalServerError().body("No se pudo guardar la imagen");
         }
     }
 
     @GetMapping("/getInfo")
-    public ResponseEntity<String> getInfo() {
-        String id = "CAM-ESP"+idEsp;
-        idEsp++;
+    public ResponseEntity<String> getInfo(@RequestParam("cameraModel") String cameraModel,
+                                          @RequestParam("frequencyImage") Integer frequencyImage,
+                                          @RequestParam("transmittedImageFormat") String transmittedImageFormat) {
+        String id = serviceESPInfo.getCameraId(cameraModel, frequencyImage, transmittedImageFormat);
         return ResponseEntity.ok(id);
     }
 }
