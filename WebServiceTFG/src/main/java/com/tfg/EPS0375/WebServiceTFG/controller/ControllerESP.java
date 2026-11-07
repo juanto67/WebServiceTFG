@@ -47,8 +47,9 @@ public class ControllerESP {
     @GetMapping("/getInfo")
     public ResponseEntity<String> getInfo(@RequestParam("cameraModel") String cameraModel,
                                           @RequestParam("frequencyImage") Integer frequencyImage,
-                                          @RequestParam("transmittedImageFormat") String transmittedImageFormat) {
-        String id = serviceESPInfo.getCameraId(cameraModel, frequencyImage, transmittedImageFormat);
+                                          @RequestParam("transmittedImageFormat") String transmittedImageFormat,
+                                          @RequestParam("macAddress") String macAddress) {
+        String id = serviceESPInfo.getCameraId(cameraModel, frequencyImage, transmittedImageFormat, macAddress);
         return ResponseEntity.ok(id);
     }
 }

@@ -14,11 +14,13 @@ public class ServiceESPInfo {
         this.repository = repository;
     }
 
-    public String getCameraId(String cameraModel,
-                              Integer frequencyImage,
-                              String transmittedImageFormat) {
-        CameraDevice camera = new CameraDevice(cameraModel, frequencyImage, transmittedImageFormat);
+    public String getCameraId(String cameraModel, Integer frequencyImage, String transmittedImageFormat, String macAddress) {
+        CameraDevice camera = new CameraDevice(cameraModel, frequencyImage, transmittedImageFormat, macAddress);
+        CameraDevice cameraFromDb = repository.getByMacAddress(macAddress);
 
+        if (cameraFromDb != null) {
+            return "CAM-" + cameraFromDb.getId();
+        }
         CameraDevice savedCamera = repository.save(camera);
 
         return "CAM-" + savedCamera.getId();

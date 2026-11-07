@@ -6,4 +6,5 @@ import org.springframework.stereotype.Repository;
 
 @Repository
 public interface ICameraDeviceRepository extends JpaRepository<CameraDevice, Long> {
+    CameraDevice getByMacAddress(String macAddress);
 }

@@ -36,13 +36,17 @@ public class CameraDevice {
     @Column(name = "last_updated_at", nullable = false)
     private LocalDateTime lastUpdatedAt;
 
+    @Column(name = "mac_address", nullable = false, length = 17)
+    private String macAddress;
+
     @Column(name = "active", nullable = false)
     private boolean active;
 
-    public CameraDevice(String cameraModel, Integer captureIntervalMs, String transmittedImageFormat) {
+    public CameraDevice(String cameraModel, Integer captureIntervalMs, String transmittedImageFormat, String macAddress) {
         this.cameraModel = cameraModel;
         this.captureIntervalMs = captureIntervalMs;
         this.transmittedImageFormat = transmittedImageFormat;
+        this.macAddress = macAddress;
         this.createdAt = LocalDateTime.now(ZoneId.of("UTC"));
         this.lastUpdatedAt = LocalDateTime.now(ZoneId.of("UTC"));
         this.active = true;
