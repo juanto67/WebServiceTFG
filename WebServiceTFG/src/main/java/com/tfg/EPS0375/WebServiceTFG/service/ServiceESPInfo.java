@@ -14,8 +14,8 @@ public class ServiceESPInfo {
         this.repository = repository;
     }
 
-    public String getCameraId(String cameraModel, Integer frequencyImage, String transmittedImageFormat, String macAddress) {
-        CameraDevice camera = new CameraDevice(cameraModel, frequencyImage, transmittedImageFormat, macAddress);
+    public String getCameraId(String cameraModel, Integer frequencyImage, String transmittedImageFormat, String macAddress, Double latitude, Double longitude) {
+        CameraDevice camera = new CameraDevice(cameraModel, frequencyImage, transmittedImageFormat, macAddress, latitude, longitude);
         CameraDevice cameraFromDb = repository.getByMacAddress(macAddress);
 
         if (cameraFromDb != null) {
