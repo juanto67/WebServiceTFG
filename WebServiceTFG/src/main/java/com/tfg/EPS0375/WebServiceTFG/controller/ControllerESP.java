@@ -47,7 +47,7 @@ public class ControllerESP {
     }
 
     @PostMapping("/newDevice")
-    public ResponseEntity<String> getInfo(@Valid @RequestBody DeviceRequestDto deviceRequestDto) {
+    public ResponseEntity<String> catchNewDevice(@Valid @RequestBody DeviceRequestDto deviceRequestDto) {
         String id = serviceESPInfo.getCameraId(deviceRequestDto);
         return ResponseEntity.ok(id);
     }
