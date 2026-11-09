@@ -1,6 +1,8 @@
 package com.tfg.EPS0375.WebServiceTFG.controller;
 
+import com.tfg.EPS0375.WebServiceTFG.controller.dto.DeviceRequestDto;
 import com.tfg.EPS0375.WebServiceTFG.service.ServiceESPInfo;
+import jakarta.validation.Valid;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
@@ -44,14 +46,9 @@ public class ControllerESP {
         }
     }
 
-    @GetMapping("/getInfo")
-    public ResponseEntity<String> getInfo(@RequestParam("cameraModel") String cameraModel,
-                                          @RequestParam("frequencyImage") Integer frequencyImage,
-                                          @RequestParam("transmittedImageFormat") String transmittedImageFormat,
-                                          @RequestParam("macAddress") String macAddress,
-                                          @RequestParam("latitude") Double latitude,
-                                          @RequestParam("longitude") Double longitude) {
-        String id = serviceESPInfo.getCameraId(cameraModel, frequencyImage, transmittedImageFormat, macAddress, latitude, longitude);
+    @PostMapping("/newDevice")
+    public ResponseEntity<String> getInfo(@Valid @RequestBody DeviceRequestDto deviceRequestDto) {
+        String id = serviceESPInfo.getCameraId(deviceRequestDto);
         return ResponseEntity.ok(id);
     }
 }
