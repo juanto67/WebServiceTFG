@@ -13,14 +13,6 @@
 -- exacta (p. ej. img:{device_id}:{id}). Solo las imágenes de alertas de incendio se
 -- conservan, de forma permanente, en alert_image.
 --
--- Sin triggers ni índices extra: no hay triggers, y no se crea ningún índice con CREATE INDEX
--- (se analizarán más adelante; solo existen los de las claves primarias y UNIQUE).
--- Todo lo que harían los triggers lo hacen funciones que el web service llama de forma explícita:
---   Detecciones (estado + historial):
---     create_detection, change_detection_status, take_next_detection,
---     change_device_detections_status, recover_stuck_detections
---   Cámaras (activación + historial):
---     device_seen, deactivate_stale_devices
 -- REGLA: detection.status y device.active solo se cambian con estas funciones. Un UPDATE
 -- directo cambiaría el estado pero no anotaría el historial.
 
@@ -129,7 +121,8 @@ CREATE TABLE detection_status_history (
 -- Alertas: dos categorías en la misma tabla (los valores los define el enum del backend)
 --   FIRE   alertas de incendio: llevan detection_id (y su imagen en alert_image)
 --   SYSTEM alertas operativas: cámara sin señal (la desactiva el worker), cola saturada...
---          no llevan detection_id; device_id solo si afectan a una cámara concreta
+--          no llevan detection_id. La alerta NO tiene device_id: el dispositivo de una alerta FIRE se obtiene
+--          por detection.device_id (así no hay dos caminos hasta device)
 -- Todas se guardan aquí; el canal (SSE hacia el panel, Telegram...) es del backend y no se guarda.
 -- ---------------------------------------------------------------
 
@@ -140,7 +133,6 @@ CREATE TABLE alert (
     severity        varchar(20) NOT NULL,                             -- p. ej. LOW, MEDIUM, HIGH
     title           varchar(120) NOT NULL,
     description     text,
-    device_id       bigint REFERENCES device(id),                     -- cámara afectada; NULL si es global (p. ej. cola saturada)
     detection_id    uuid UNIQUE REFERENCES detection(id),             -- solo FIRE; como máximo una alerta por detección
     risk_score      numeric(4,3) CHECK (risk_score BETWEEN 0 AND 1),  -- tras fusionar con sensores (solo FIRE)
     status          varchar(20) NOT NULL,                             -- p. ej. OPEN, ACKNOWLEDGED, RESOLVED, FALSE_POSITIVE
