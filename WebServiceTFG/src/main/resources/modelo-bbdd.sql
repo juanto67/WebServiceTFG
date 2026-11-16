@@ -148,21 +148,37 @@ CREATE TABLE alert_image (
 
 -- Crea la detección y anota su primera fila del historial (NULL -> estado inicial).
 -- Devuelve la hora de llegada (received_at).
-CREATE FUNCTION create_detection(p_id uuid, p_device_id bigint, p_status varchar, p_redis_key varchar)
-RETURNS timestamptz AS $$
-DECLARE
-    v_received timestamptz;
+CREATE PROCEDURE create_detection(p_id uuid, p_device_id bigint, p_status varchar, p_redis_key varchar, p_witdh int, p_height int)
+AS $$
 BEGIN
-    INSERT INTO detection (id, device_id, status, redis_key)
-    VALUES (p_id, p_device_id, p_status, p_redis_key)
-    RETURNING received_at INTO v_received;
+    INSERT INTO detection (id, device_id, status, redis_key, width, height)
+    VALUES (p_id, p_device_id, p_status, p_redis_key, p_witdh, p_height);
 
     INSERT INTO detection_status_history (detection_id, device_id, from_status, to_status)
     VALUES (p_id, p_device_id, NULL, p_status);
-
-    RETURN v_received;
 END;
 $$ LANGUAGE plpgsql;
+
+-- La ingesta la llama con cada imagen válida: anota la señal de vida y reactiva la cámara
+-- si estaba inactiva (anotándolo en el historial).
+-- Devuelve true si la cámara estaba caída y se ha reactivado (entonces hay que cerrar su alerta);
+-- false si ya estaba activa o si la cámara no existe.
+CREATE PROCEDURE device_seen(p_device_id bigint)
+    AS $$
+DECLARE
+v_was_inactive boolean;
+BEGIN
+    SELECT NOT d.active INTO v_was_inactive
+    FROM device d WHERE d.id = p_device_id FOR UPDATE;
+
+    UPDATE device SET last_seen_at = clock_timestamp(), active = true WHERE id = p_device_id;
+
+    IF v_was_inactive THEN
+            INSERT INTO device_activation_history (device_id, active) VALUES (p_device_id, true);
+    END IF;
+END;
+$$ LANGUAGE plpgsql;
+
 
 -- Cambia el estado de UNA detección y anota el cambio.
 -- Devuelve true si cambió; false si no existe o ya estaba en ese estado (no anota nada).
@@ -188,65 +204,11 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql;
 
--- La ingesta la llama con cada imagen válida: anota la señal de vida y reactiva la cámara
--- si estaba inactiva (anotándolo en el historial).
--- Devuelve true si la cámara estaba caída y se ha reactivado (entonces hay que cerrar su alerta);
--- false si ya estaba activa o si la cámara no existe.
-CREATE FUNCTION device_seen(p_device_id bigint)
-RETURNS boolean AS $$
-DECLARE
-    v_was_inactive boolean;
-BEGIN
-    SELECT NOT d.active INTO v_was_inactive
-    FROM device d WHERE d.id = p_device_id FOR UPDATE;
-
-    IF NOT FOUND THEN
-        RETURN false;
-    END IF;
-
-    UPDATE device SET last_seen_at = clock_timestamp(), active = true WHERE id = p_device_id;
-
-    IF v_was_inactive THEN
-        INSERT INTO device_activation_history (device_id, active) VALUES (p_device_id, true);
-    END IF;
-
-    RETURN v_was_inactive;
-END;
-$$ LANGUAGE plpgsql;
-
--- El worker de dispositivos la llama cada 5 minutos: desactiva las cámaras activas que dejaron de
--- enviar imágenes (margen de 2 intervalos) y lo anota en el historial. Devuelve el id de cada cámara
--- que acaba de caer (el backend crea una alerta por cada una). Una cámara se desactiva una sola vez
--- por caída. Las que nunca enviaron nada (last_seen_at NULL) no se tocan: ya están inactivas.
-CREATE FUNCTION deactivate_stale_devices()
-RETURNS TABLE (device_id bigint) AS $$
-#variable_conflict use_column
-BEGIN
-    RETURN QUERY
-    WITH caidas AS (
-        UPDATE device d SET active = false
-        WHERE d.active = true
-          AND d.last_seen_at < now() - interval '1 second' * (d.capture_interval_s * 2)
-        RETURNING d.id
-    ), anotadas AS (
-        INSERT INTO device_activation_history (device_id, active)
-        SELECT c.id, false FROM caidas c
-        RETURNING device_activation_history.device_id
-    )
-    SELECT a.device_id FROM anotadas a;
-END;
-$$ LANGUAGE plpgsql;
-
-   -- Registra una cámara y su dispositivo.
+-- Registra una cámara y su dispositivo.
 --   * camera_model: si ya existe uno con el mismo name y transmittedImageFormat se usa ese;
 --     si no, se crea.
 --   * device: si ya existe uno con esa mac_address se actualizan sus datos (name, board, modelo de
 --     cámara, intervalo, latitud y longitud); si no, se crea. No toca active, created_at ni last_seen_at.
--- El intervalo llega en milisegundos y se guarda en segundos (capture_interval_s), redondeado hacia
--- arriba y con mínimo 1.
--- Devuelve en los parámetros INOUT el id del dispositivo y el del modelo de cámara usados.
--- Uso: CALL register_device('AI Thinker ESP32-CAM', 'OV2640', 'image/jpeg', 'aa:bb:cc:dd:ee:01',
---                           180000, 'cam-01', 41.38, 2.17, NULL, NULL);
 CREATE OR REPLACE PROCEDURE register_device(
     p_board        varchar,
     p_camera_name  varchar,
