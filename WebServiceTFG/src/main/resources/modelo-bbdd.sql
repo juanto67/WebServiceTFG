@@ -1,5 +1,5 @@
 -- TFG: Sistema inteligente de detección temprana de incendios
--- Esquema PostgreSQL (13 o superior)
+-- Esquema PostgreSQL
 --
 -- Enumerados: los estados de detección y los de las alertas (status, category, alert_type,
 -- severity) NO se definen aquí. La base de datos solo guarda el texto y los valores válidos
@@ -13,8 +13,6 @@
 -- exacta (p. ej. img:{device_id}:{id}). Solo las imágenes de alertas de incendio se
 -- conservan, de forma permanente, en alert_image.
 --
--- REGLA: detection.status y device.active solo se cambian con estas funciones. Un UPDATE
--- directo cambiaría el estado pero no anotaría el historial.
 
 -- ---------------------------------------------------------------
 -- Dispositivos
@@ -23,8 +21,7 @@
 CREATE TABLE camera_model (
     id          smallint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
     name        varchar(60) NOT NULL UNIQUE,      -- p. ej. 'OV2640'
-    max_width   int,
-    max_height  int
+    transmittedImageFormat varchar(20) not null
 );
 
 CREATE TABLE device (
@@ -33,17 +30,9 @@ CREATE TABLE device (
     mac_address         macaddr NOT NULL UNIQUE,
     board               varchar(60),                         -- p. ej. 'AI Thinker ESP32-CAM'
     camera_model_id     smallint NOT NULL REFERENCES camera_model(id),
-    -- El ESP32 envía su token en la cabecera X-Device-Token. El backend calcula su hash
-    -- y lo compara con este campo para saber que la foto viene de una cámara autorizada.
-    -- Se guarda el hash y no el token, para que una fuga de la base de datos no lo revele.
-    token_hash          varchar(100) NOT NULL,
-    capture_interval_s  int NOT NULL DEFAULT 180 CHECK (capture_interval_s > 0),
+    capture_interval_s  int NOT NULL DEFAULT 60 CHECK (capture_interval_s > 0), --p ej 180 s
     latitude            double precision CHECK (latitude  BETWEEN  -90 AND  90),
     longitude           double precision CHECK (longitude BETWEEN -180 AND 180),
-    -- Estado operativo de la cámara. Lo gestiona SOLO el backend; no hay desactivación manual:
-    --   deactivate_stale_devices() la pone a false si deja de enviar imágenes,
-    --   y device_seen() la pone a true cuando vuelve a llegar una imagen válida.
-    -- Empieza en false: una cámara recién registrada está inactiva hasta que envía su primera imagen.
     active              boolean NOT NULL DEFAULT false,
     created_at          timestamptz NOT NULL DEFAULT now(),
     last_seen_at        timestamptz                          -- device_seen() lo actualiza con cada imagen válida
@@ -94,6 +83,7 @@ CREATE TABLE detection (
     inference_ms      int CHECK (inference_ms >= 0),                   -- solo la llamada a Ollama
     width             int,
     height            int,
+    has_alert_image     boolean DEFAULT null,                     -- si se guardó en alert_image
     image_expires_at  timestamptz,                                     -- cuándo caduca en Redis
     UNIQUE (id, device_id)                                             -- permite el FK compuesto del historial
 );
@@ -198,80 +188,6 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql;
 
--- El worker de IA toma la imagen más antigua que esté en p_from_status y la pasa a p_to_status,
--- de forma atómica (varios workers no cogen la misma). Devuelve 0 filas si no hay ninguna.
-CREATE FUNCTION take_next_detection(p_from_status varchar, p_to_status varchar)
-RETURNS TABLE (id uuid, device_id bigint, redis_key varchar) AS $$
-#variable_conflict use_column
-DECLARE
-    v_id     uuid;
-    v_device bigint;
-    v_key    varchar;
-BEGIN
-    SELECT d.id, d.device_id, d.redis_key INTO v_id, v_device, v_key
-    FROM detection d
-    WHERE d.status = p_from_status
-    ORDER BY d.received_at
-    LIMIT 1
-    FOR UPDATE SKIP LOCKED;
-
-    IF NOT FOUND THEN
-        RETURN;
-    END IF;
-
-    UPDATE detection d SET status = p_to_status WHERE d.id = v_id;
-
-    INSERT INTO detection_status_history (detection_id, device_id, from_status, to_status)
-    VALUES (v_id, v_device, p_from_status, p_to_status);
-
-    RETURN QUERY SELECT v_id, v_device, v_key;
-END;
-$$ LANGUAGE plpgsql;
-
--- Cambia de estado TODAS las detecciones de una cámara que estén en p_from_status (p. ej. descartar
--- las pendientes cuando llega una imagen más reciente). Devuelve id y redis_key de las cambiadas,
--- para que el backend borre sus imágenes de Redis.
--- Hay que llamarla ANTES de create_detection con la imagen nueva, para no descartarla a ella.
-CREATE FUNCTION change_device_detections_status(p_device_id bigint, p_from_status varchar, p_to_status varchar)
-RETURNS TABLE (id uuid, redis_key varchar) AS $$
-#variable_conflict use_column
-BEGIN
-    RETURN QUERY
-    WITH cambiadas AS (
-        UPDATE detection d SET status = p_to_status
-        WHERE d.device_id = p_device_id AND d.status = p_from_status
-        RETURNING d.id, d.device_id, d.redis_key
-    ), anotadas AS (
-        INSERT INTO detection_status_history (detection_id, device_id, from_status, to_status)
-        SELECT c.id, c.device_id, p_from_status, p_to_status FROM cambiadas c
-        RETURNING detection_id
-    )
-    SELECT c.id, c.redis_key FROM cambiadas c;
-END;
-$$ LANGUAGE plpgsql;
-
--- Recupera las detecciones atascadas: las que siguen en p_from_status y llevan más de p_older_than
--- sin cambiar de estado (p. ej. el servidor se cayó mientras las procesaba). Las pasa a p_to_status.
-CREATE FUNCTION recover_stuck_detections(p_from_status varchar, p_to_status varchar, p_older_than interval)
-RETURNS TABLE (id uuid) AS $$
-#variable_conflict use_column
-BEGIN
-    RETURN QUERY
-    WITH cambiadas AS (
-        UPDATE detection d SET status = p_to_status
-        WHERE d.status = p_from_status
-          AND (SELECT max(h.changed_at) FROM detection_status_history h WHERE h.detection_id = d.id)
-              < now() - p_older_than
-        RETURNING d.id, d.device_id
-    ), anotadas AS (
-        INSERT INTO detection_status_history (detection_id, device_id, from_status, to_status)
-        SELECT c.id, c.device_id, p_from_status, p_to_status FROM cambiadas c
-        RETURNING detection_id
-    )
-    SELECT c.id FROM cambiadas c;
-END;
-$$ LANGUAGE plpgsql;
-
 -- La ingesta la llama con cada imagen válida: anota la señal de vida y reactiva la cámara
 -- si estaba inactiva (anotándolo en el historial).
 -- Devuelve true si la cámara estaba caída y se ha reactivado (entonces hay que cerrar su alerta);
@@ -321,49 +237,51 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql;
 
--- ===============================================================
--- Cómo lo usará el web service (ejemplos; los valores de status vienen del enum)
--- ===============================================================
+   -- Registra una cámara y su dispositivo.
+--   * camera_model: si ya existe uno con el mismo name y transmittedImageFormat se usa ese;
+--     si no, se crea.
+--   * device: si ya existe uno con esa mac_address se actualizan sus datos (name, board, modelo de
+--     cámara, intervalo, latitud y longitud); si no, se crea. No toca active, created_at ni last_seen_at.
+-- El intervalo llega en milisegundos y se guarda en segundos (capture_interval_s), redondeado hacia
+-- arriba y con mínimo 1.
+-- Devuelve en los parámetros INOUT el id del dispositivo y el del modelo de cámara usados.
+-- Uso: CALL register_device('AI Thinker ESP32-CAM', 'OV2640', 'image/jpeg', 'aa:bb:cc:dd:ee:01',
+--                           180000, 'cam-01', 41.38, 2.17, NULL, NULL);
+CREATE OR REPLACE PROCEDURE register_device(
+    p_board        varchar,
+    p_camera_name  varchar,
+    p_image_format varchar,
+    p_mac_address  varchar,
+    p_interval_s  bigint,
+    p_device_name  varchar,
+    p_latitude     double precision,
+    p_longitude    double precision,
+    INOUT p_device_id        bigint,
+    INOUT p_camera_model_id  smallint
+) AS $$
+BEGIN
+    -- Cámara: reutilizar la que tenga el mismo name y formato, o crearla
+    SELECT c.id INTO p_camera_model_id
+    FROM camera_model c
+    WHERE c.name = p_camera_name AND c.transmittedImageFormat = p_image_format;
 
--- Ingesta, con cada imagen válida (en este orden, en una transacción):
---   SELECT device_seen(:device);                                         -- true: estaba caída, cerrar su alerta
---   SELECT * FROM change_device_detections_status(:device, :pendiente, :descartada);
---                                                                        -- borrar de Redis las redis_key devueltas
---   (guardar la imagen nueva en Redis)
---   SELECT create_detection(:uuid, :device, :pendiente, :redis_key);
+    IF NOT FOUND THEN
+            INSERT INTO camera_model (name, transmittedImageFormat)
+            VALUES (p_camera_name, p_image_format)
+            ON CONFLICT DO NOTHING
+            RETURNING id INTO p_camera_model_id;
+    END IF;
 
--- Worker de IA:
---   SELECT * FROM take_next_detection(:pendiente, :procesando);          -- id, device_id, redis_key; 0 filas si no hay
---   (leer la imagen de Redis con redis_key, llamar a Ollama)
---   UPDATE detection SET probability = :p, indicators = :i, reason = :r,
---          raw_response = :json, inference_ms = :ms WHERE id = :id;      -- solo los datos, no el estado
---   SELECT change_detection_status(:id, :hecha);                         -- o :error si algo falló
-
--- Recuperar atascadas (cada pocos minutos):
---   SELECT * FROM recover_stuck_detections(:procesando, :error, interval '5 minutes');
-
--- Worker de dispositivos (cada 5 minutos):
---   SELECT * FROM deactivate_stale_devices();                            -- una alerta SYSTEM por cada device_id
-
--- Tiempo medio y p95 que pasan las imágenes en cada estado, por cámara
---   SELECT device_id, status, count(*) AS n,
---          round(avg(duration_ms)) AS media_ms,
---          percentile_cont(0.95) WITHIN GROUP (ORDER BY duration_ms) AS p95_ms
---   FROM (SELECT device_id, to_status AS status,
---                (EXTRACT(EPOCH FROM (LEAD(changed_at) OVER w - changed_at)) * 1000)::int AS duration_ms
---         FROM detection_status_history
---         WINDOW w AS (PARTITION BY detection_id ORDER BY changed_at)) t
---   WHERE duration_ms IS NOT NULL
---   GROUP BY device_id, status;
-
--- Tiempo total desde que llega la imagen hasta su último estado
---   SELECT detection_id, max(changed_at) - min(changed_at) AS total
---   FROM detection_status_history GROUP BY detection_id;
-
--- Alertas abiertas para cargar el panel (las nuevas llegan después por SSE)
---   SELECT * FROM alert WHERE status = :abierta ORDER BY created_at DESC;
-
--- Cuánto tiempo estuvo activo o inactivo cada dispositivo
---   SELECT device_id, active, changed_at,
---          LEAD(changed_at, 1, now()) OVER (PARTITION BY device_id ORDER BY changed_at) - changed_at AS duracion
---   FROM device_activation_history ORDER BY device_id, changed_at;
+    -- Dispositivo: crear o actualizar por mac_address
+    INSERT INTO device (name, mac_address, board, camera_model_id, capture_interval_s, latitude, longitude)
+    VALUES (p_device_name, p_mac_address::macaddr, p_board, p_camera_model_id, p_interval_s, p_latitude, p_longitude)
+        ON CONFLICT (mac_address) DO UPDATE
+        SET name               = EXCLUDED.name,
+        board              = EXCLUDED.board,
+        camera_model_id    = EXCLUDED.camera_model_id,
+        capture_interval_s = EXCLUDED.capture_interval_s,
+        latitude           = EXCLUDED.latitude,
+        longitude          = EXCLUDED.longitude
+        RETURNING id INTO p_device_id;
+END;
+$$ LANGUAGE plpgsql;
