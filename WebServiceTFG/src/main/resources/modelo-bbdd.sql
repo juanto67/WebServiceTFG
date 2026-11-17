@@ -6,8 +6,7 @@
 -- los define el enum del backend (en Spring Boot: @Enumerated(EnumType.STRING)).
 -- Los valores que aparecen en los comentarios son solo orientativos.
 --
--- UUID: el de detection lo genera el backend (UUID.randomUUID()), porque se necesita antes
--- de insertar para guardar la imagen en Redis.
+-- El id de detection lo genera PostgreSQL como identity.
 --
 -- Redis: la imagen se guarda en Redis durante 24 h y detection.redis_key guarda la clave
 -- exacta (p. ej. img:{device_id}:{id}). Solo las imágenes de alertas de incendio se
@@ -63,7 +62,7 @@ CREATE TABLE sensor_reading (
 -- ---------------------------------------------------------------
 -- Detecciones: una fila por imagen recibida, con su estado actual y su predicción
 --
--- id: lo genera el backend, sin valor por defecto.
+-- id: lo genera PostgreSQL como identity.
 -- status: lo escribe el backend con su enum (p. ej. PENDING, PROCESSING, DONE, ERROR, DISCARDED).
 --         Aquí solo está el estado ACTUAL; el recorrido completo está en detection_status_history.
 -- redis_key: clave exacta de la imagen en Redis (caduca a las 24 h; la clave se conserva).
@@ -71,7 +70,7 @@ CREATE TABLE sensor_reading (
 -- ---------------------------------------------------------------
 
 CREATE TABLE detection (
-    id                uuid PRIMARY KEY,                                -- generado por el backend
+    id                bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
     device_id         bigint NOT NULL REFERENCES device(id),
     status            varchar(20) NOT NULL,                            -- valores definidos por el enum del backend
     redis_key         varchar(100) NOT NULL,                           -- p. ej. img:{device_id}:{id}
@@ -84,27 +83,22 @@ CREATE TABLE detection (
     width             int,
     height            int,
     has_alert_image   boolean DEFAULT null,                     -- si se guardó en alert_image
-    image_expires_at  TIMESTAMP,                                     -- cuándo caduca en Redis
-    UNIQUE (id, device_id)                                             -- permite el FK compuesto del historial
+    image_expires_at  TIMESTAMP                                      -- cuándo caduca en Redis
 );
 
 -- Historial de estados: una fila por cada cambio de detection.status
 --   from_status: NULL en la primera fila (la imagen acaba de llegar)
 --   to_status:   estado al que pasó
 --   changed_at:  cuándo (hora de la base de datos, con clock_timestamp())
--- Clave primaria: (detection_id, device_id, changed_at). Una detección tiene varias filas, una
--- por cada cambio, así que detection_id y device_id solos no bastan para identificar una fila:
--- changed_at es lo que las distingue.
--- device_id está repetido a propósito; el FK compuesto garantiza que coincida con el de la detección.
+-- Cada fila tiene un identificador propio; detection_id es la única referencia a la detección.
 -- Al borrar una detección vieja se borra también su historial.
 CREATE TABLE detection_status_history (
-    detection_id  uuid NOT NULL,
-    device_id     bigint NOT NULL,
+    id            bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+    detection_id  bigint NOT NULL,
     from_status   varchar(20),
     to_status     varchar(20) NOT NULL,
     changed_at    TIMESTAMP NOT NULL DEFAULT clock_timestamp(),
-    PRIMARY KEY (detection_id, device_id, changed_at),
-    FOREIGN KEY (detection_id, device_id) REFERENCES detection (id, device_id) ON DELETE CASCADE
+    FOREIGN KEY (detection_id) REFERENCES detection(id) ON DELETE CASCADE
 );
 
 -- ---------------------------------------------------------------
@@ -123,7 +117,7 @@ CREATE TABLE alert (
     severity        varchar(20) NOT NULL,                             -- p. ej. LOW, MEDIUM, HIGH
     title           varchar(120) NOT NULL,
     description     text,
-    detection_id    uuid UNIQUE REFERENCES detection(id),             -- solo FIRE; como máximo una alerta por detección
+    detection_id    bigint UNIQUE REFERENCES detection(id),            -- solo FIRE; como máximo una alerta por detección
     risk_score      numeric(4,3) CHECK (risk_score BETWEEN 0 AND 1),  -- tras fusionar con sensores (solo FIRE)
     status          varchar(20) NOT NULL,                             -- p. ej. OPEN, ACKNOWLEDGED, RESOLVED, FALSE_POSITIVE
     created_at      TIMESTAMP NOT NULL DEFAULT now(),
@@ -132,12 +126,12 @@ CREATE TABLE alert (
 );
 
 -- Imagen que se conserva de forma permanente: la de las detecciones que generaron una alerta
--- de incendio. Se identifica con el mismo UUID de la detección (el de la clave de Redis).
+-- de incendio. Tiene un UUID propio y referencia a la detección que la generó.
 CREATE TABLE alert_image (
-    detection_id  uuid PRIMARY KEY REFERENCES detection(id),
-    content       varchar(20) NOT NULL, --path imagen
+    id            uuid PRIMARY KEY,
+    detection_id  bigint NOT NULL UNIQUE REFERENCES detection(id),
+    content       varchar(20) NOT NULL, --file name imagen
     content_type  varchar(30) NOT NULL DEFAULT 'image/jpeg',
-    size_bytes    int NOT NULL,
     saved_at      TIMESTAMP NOT NULL DEFAULT now()
 );
 
@@ -146,16 +140,30 @@ CREATE TABLE alert_image (
 -- Los valores de estado (p. ej. 'PENDING') los pasa siempre el backend desde su enum.
 -- ===============================================================
 
--- Crea la detección y anota su primera fila del historial (NULL -> estado inicial).
+-- Crea la detección, su imagen asociada y anota la primera fila del historial
+-- (NULL -> estado inicial).
 -- Devuelve la hora de llegada (received_at).
-CREATE PROCEDURE create_detection(p_id uuid, p_device_id bigint, p_status varchar, p_redis_key varchar, p_witdh int, p_height int)
+CREATE PROCEDURE create_detection(
+    INOUT p_id bigint,
+    p_device_id bigint,
+    p_status varchar,
+    p_redis_key varchar,
+    p_witdh int,
+    p_height int,
+    p_alert_image_id uuid,
+    p_filename varchar
+)
 AS $$
 BEGIN
-    INSERT INTO detection (id, device_id, status, redis_key, width, height)
-    VALUES (p_id, p_device_id, p_status, p_redis_key, p_witdh, p_height);
+    INSERT INTO detection (device_id, status, redis_key, width, height)
+    VALUES (p_device_id, p_status, p_redis_key, p_witdh, p_height)
+    RETURNING id INTO p_id;
 
-    INSERT INTO detection_status_history (detection_id, device_id, from_status, to_status)
-    VALUES (p_id, p_device_id, NULL, p_status);
+    INSERT INTO detection_status_history (detection_id, from_status, to_status)
+    VALUES (p_id, NULL, p_status);
+
+    INSERT INTO alert_image (id, detection_id, content)
+    VALUES (p_alert_image_id, p_id, p_filename);
 END;
 $$ LANGUAGE plpgsql;
 
@@ -182,13 +190,12 @@ $$ LANGUAGE plpgsql;
 
 -- Cambia el estado de UNA detección y anota el cambio.
 -- Devuelve true si cambió; false si no existe o ya estaba en ese estado (no anota nada).
-CREATE FUNCTION change_detection_status(p_id uuid, p_to_status varchar)
+CREATE FUNCTION change_detection_status(p_id bigint, p_to_status varchar)
 RETURNS boolean AS $$
 DECLARE
-    v_device bigint;
-    v_from   varchar;
+    v_from varchar;
 BEGIN
-    SELECT d.device_id, d.status INTO v_device, v_from
+    SELECT d.status INTO v_from
     FROM detection d WHERE d.id = p_id FOR UPDATE;
 
     IF NOT FOUND OR v_from = p_to_status THEN
@@ -197,8 +204,8 @@ BEGIN
 
     UPDATE detection SET status = p_to_status WHERE id = p_id;
 
-    INSERT INTO detection_status_history (detection_id, device_id, from_status, to_status)
-    VALUES (p_id, v_device, v_from, p_to_status);
+    INSERT INTO detection_status_history (detection_id, from_status, to_status)
+    VALUES (p_id, v_from, p_to_status);
 
     RETURN true;
 END;
