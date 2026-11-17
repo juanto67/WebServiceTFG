@@ -24,21 +24,20 @@ public class ControllerESP {
 
     @PostMapping("/newImage")
     public ResponseEntity<String> catchNewImage(
-            @RequestBody byte[] jpeg,
+            @RequestBody byte[] base64Image,
             @RequestHeader("X-Width") int width,
             @RequestHeader("X-Height") int height,
             @RequestHeader("X-Format") String format) {
         try {
-            if (jpeg == null || jpeg.length == 0) {
-                return ResponseEntity.badRequest()
-                        .body("Imagen vacía");
+            if (base64Image == null || base64Image.length == 0) {
+                return ResponseEntity.badRequest().body("Imagen vacía");
             }
 
             Path output = Path.of("received-image.jpg");
 
-            Files.write(output, jpeg);
+            Files.write(output, base64Image);
 
-            return ResponseEntity.ok("Imagen JPEG guardada correctamente: " + output);
+            return ResponseEntity.ok("Imagen guardada correctamente: " + output);
 
         } catch (IOException exception) {
 
