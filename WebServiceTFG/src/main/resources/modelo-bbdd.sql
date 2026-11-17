@@ -135,7 +135,7 @@ CREATE TABLE alert (
 -- de incendio. Se identifica con el mismo UUID de la detección (el de la clave de Redis).
 CREATE TABLE alert_image (
     detection_id  uuid PRIMARY KEY REFERENCES detection(id),
-    content       bytea NOT NULL,
+    content       varchar(20) NOT NULL, --path imagen
     content_type  varchar(30) NOT NULL DEFAULT 'image/jpeg',
     size_bytes    int NOT NULL,
     saved_at      TIMESTAMP NOT NULL DEFAULT now()
