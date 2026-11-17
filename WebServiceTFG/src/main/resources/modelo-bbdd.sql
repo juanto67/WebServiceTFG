@@ -21,21 +21,21 @@
 CREATE TABLE camera_model (
     id          smallint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
     name        varchar(60) NOT NULL UNIQUE,      -- p. ej. 'OV2640'
-    transmittedImageFormat varchar(20) not null
+    transmitted_image_format varchar(20) not null
 );
 
 CREATE TABLE device (
     id                  bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
     name                varchar(80) NOT NULL,                -- p. ej. 'cam-01'
-    mac_address         macaddr NOT NULL UNIQUE,
+    mac_address         varchar(17) NOT NULL UNIQUE,
     board               varchar(60),                         -- p. ej. 'AI Thinker ESP32-CAM'
     camera_model_id     smallint NOT NULL REFERENCES camera_model(id),
     capture_interval_s  int NOT NULL DEFAULT 60 CHECK (capture_interval_s > 0), --p ej 180 s
     latitude            double precision CHECK (latitude  BETWEEN  -90 AND  90),
     longitude           double precision CHECK (longitude BETWEEN -180 AND 180),
     active              boolean NOT NULL DEFAULT false,
-    created_at          timestamptz NOT NULL DEFAULT now(),
-    last_seen_at        timestamptz                          -- device_seen() lo actualiza con cada imagen válida
+    created_at          TIMESTAMP NOT NULL DEFAULT now(),
+    last_seen_at        TIMESTAMP                      -- device_seen() lo actualiza con cada imagen válida
 );
 
 -- Historial de activación: una fila cada vez que active cambia de valor.
@@ -44,7 +44,7 @@ CREATE TABLE device_activation_history (
     id          bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
     device_id   bigint NOT NULL REFERENCES device(id) ON DELETE CASCADE,
     active      boolean NOT NULL,                            -- estado al que pasó
-    changed_at  timestamptz NOT NULL DEFAULT clock_timestamp()
+    changed_at  TIMESTAMP NOT NULL DEFAULT clock_timestamp()
 );
 
 -- Lecturas de los sensores ambientales (opcionales). Los CHECK rechazan valores
@@ -52,7 +52,7 @@ CREATE TABLE device_activation_history (
 CREATE TABLE sensor_reading (
     id              bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
     device_id       bigint NOT NULL REFERENCES device(id) ON DELETE CASCADE,
-    measured_at     timestamptz NOT NULL DEFAULT now(),
+    measured_at     TIMESTAMP NOT NULL DEFAULT now(),
     temperature_c   numeric(5,2),                                          -- temperatura en °C (de -999,99 a 999,99)
     humidity_pct    numeric(5,2) CHECK (humidity_pct BETWEEN 0 AND 100),   -- humedad relativa en %
     co2_ppm         int CHECK (co2_ppm >= 0),                              -- CO2 en partes por millón (ppm)
@@ -75,7 +75,7 @@ CREATE TABLE detection (
     device_id         bigint NOT NULL REFERENCES device(id),
     status            varchar(20) NOT NULL,                            -- valores definidos por el enum del backend
     redis_key         varchar(100) NOT NULL,                           -- p. ej. img:{device_id}:{id}
-    received_at       timestamptz NOT NULL DEFAULT clock_timestamp(),
+    received_at       TIMESTAMP NOT NULL DEFAULT clock_timestamp(),
     probability       numeric(4,3) CHECK (probability BETWEEN 0 AND 1),
     indicators        text[],                                          -- p. ej. {humo,llamas}
     reason            text,
@@ -83,8 +83,8 @@ CREATE TABLE detection (
     inference_ms      int CHECK (inference_ms >= 0),                   -- solo la llamada a Ollama
     width             int,
     height            int,
-    has_alert_image     boolean DEFAULT null,                     -- si se guardó en alert_image
-    image_expires_at  timestamptz,                                     -- cuándo caduca en Redis
+    has_alert_image   boolean DEFAULT null,                     -- si se guardó en alert_image
+    image_expires_at  TIMESTAMP,                                     -- cuándo caduca en Redis
     UNIQUE (id, device_id)                                             -- permite el FK compuesto del historial
 );
 
@@ -102,7 +102,7 @@ CREATE TABLE detection_status_history (
     device_id     bigint NOT NULL,
     from_status   varchar(20),
     to_status     varchar(20) NOT NULL,
-    changed_at    timestamptz NOT NULL DEFAULT clock_timestamp(),
+    changed_at    TIMESTAMP NOT NULL DEFAULT clock_timestamp(),
     PRIMARY KEY (detection_id, device_id, changed_at),
     FOREIGN KEY (detection_id, device_id) REFERENCES detection (id, device_id) ON DELETE CASCADE
 );
@@ -126,8 +126,8 @@ CREATE TABLE alert (
     detection_id    uuid UNIQUE REFERENCES detection(id),             -- solo FIRE; como máximo una alerta por detección
     risk_score      numeric(4,3) CHECK (risk_score BETWEEN 0 AND 1),  -- tras fusionar con sensores (solo FIRE)
     status          varchar(20) NOT NULL,                             -- p. ej. OPEN, ACKNOWLEDGED, RESOLVED, FALSE_POSITIVE
-    created_at      timestamptz NOT NULL DEFAULT now(),
-    resolved_at     timestamptz,
+    created_at      TIMESTAMP NOT NULL DEFAULT now(),
+    resolved_at     TIMESTAMP DEFAULT null,
     notified        boolean NOT NULL DEFAULT false                    -- ya avisada por un canal externo (opcional)
 );
 
@@ -138,7 +138,7 @@ CREATE TABLE alert_image (
     content       bytea NOT NULL,
     content_type  varchar(30) NOT NULL DEFAULT 'image/jpeg',
     size_bytes    int NOT NULL,
-    saved_at      timestamptz NOT NULL DEFAULT now()
+    saved_at      TIMESTAMP NOT NULL DEFAULT now()
 );
 
 -- ===============================================================
@@ -225,10 +225,10 @@ BEGIN
     -- Cámara: reutilizar la que tenga el mismo name y formato, o crearla
     SELECT c.id INTO p_camera_model_id
     FROM camera_model c
-    WHERE c.name = p_camera_name AND c.transmittedImageFormat = p_image_format;
+    WHERE c.name = p_camera_name AND c.transmitted_image_format = p_image_format;
 
     IF NOT FOUND THEN
-            INSERT INTO camera_model (name, transmittedImageFormat)
+            INSERT INTO camera_model (name, transmitted_image_format)
             VALUES (p_camera_name, p_image_format)
             ON CONFLICT DO NOTHING
             RETURNING id INTO p_camera_model_id;
@@ -236,7 +236,7 @@ BEGIN
 
     -- Dispositivo: crear o actualizar por mac_address
     INSERT INTO device (name, mac_address, board, camera_model_id, capture_interval_s, latitude, longitude)
-    VALUES (p_device_name, p_mac_address::macaddr, p_board, p_camera_model_id, p_interval_s, p_latitude, p_longitude)
+    VALUES (p_device_name, p_mac_address, p_board, p_camera_model_id, p_interval_s, p_latitude, p_longitude)
         ON CONFLICT (mac_address) DO UPDATE
         SET name               = EXCLUDED.name,
         board              = EXCLUDED.board,
