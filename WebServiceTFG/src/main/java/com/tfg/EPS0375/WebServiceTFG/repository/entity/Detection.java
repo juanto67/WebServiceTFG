@@ -36,8 +36,6 @@ public class Detection {
 
     @Column(nullable = false, length = 20)
     private String status;
-    @Column(name = "redis_key", nullable = false, length = 100)
-    private String redisKey;
     @Column(name = "received_at", nullable = false, updatable = false)
     private LocalDateTime receivedAt;
     @Column(precision = 4, scale = 3)
@@ -56,6 +54,4 @@ public class Detection {
     private Integer height;
     @Column(name = "has_alert_image")
     private Boolean hasAlertImage;
-    @Column(name = "image_expires_at")
-    private LocalDateTime imageExpiresAt;
 }

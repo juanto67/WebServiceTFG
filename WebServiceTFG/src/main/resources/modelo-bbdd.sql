@@ -8,7 +8,7 @@
 --
 -- El id de detection lo genera PostgreSQL como identity.
 --
--- Redis: la imagen se guarda en Redis durante 24 h y detection.redis_key guarda la clave
+-- Redis: la imagen se guarda en Redis durante 24 h y alert_image.redis_key guarda la clave
 -- exacta (p. ej. img:{device_id}:{id}). Solo las imágenes de alertas de incendio se
 -- conservan, de forma permanente, en alert_image.
 --
@@ -65,7 +65,6 @@ CREATE TABLE sensor_reading (
 -- id: lo genera PostgreSQL como identity.
 -- status: lo escribe el backend con su enum (p. ej. PENDING, PROCESSING, DONE, ERROR, DISCARDED).
 --         Aquí solo está el estado ACTUAL; el recorrido completo está en detection_status_history.
--- redis_key: clave exacta de la imagen en Redis (caduca a las 24 h; la clave se conserva).
 -- received_at: cuándo llegó. Sirve para ordenar la cola sin hacer un join.
 -- ---------------------------------------------------------------
 
@@ -73,7 +72,6 @@ CREATE TABLE detection (
     id                bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
     device_id         bigint NOT NULL REFERENCES device(id),
     status            varchar(20) NOT NULL,                            -- valores definidos por el enum del backend
-    redis_key         varchar(100) NOT NULL,                           -- p. ej. img:{device_id}:{id}
     received_at       TIMESTAMP NOT NULL DEFAULT clock_timestamp(),
     probability       numeric(4,3) CHECK (probability BETWEEN 0 AND 1),
     indicators        text[],                                          -- p. ej. {humo,llamas}
@@ -82,8 +80,7 @@ CREATE TABLE detection (
     inference_ms      int CHECK (inference_ms >= 0),                   -- solo la llamada a Ollama
     width             int,
     height            int,
-    has_alert_image   boolean DEFAULT null,                     -- si se guardó en alert_image
-    image_expires_at  TIMESTAMP                                      -- cuándo caduca en Redis
+    has_alert   boolean DEFAULT null                           -- si se guardó en alert_image
 );
 
 -- Historial de estados: una fila por cada cambio de detection.status
@@ -126,13 +123,17 @@ CREATE TABLE alert (
 );
 
 -- Imagen que se conserva de forma permanente: la de las detecciones que generaron una alerta
--- de incendio. Tiene un UUID propio y referencia a la detección que la generó.
-CREATE TABLE alert_image (
+-- de incendio. Tiene un UUID propio y referencia al dispositivo y a la detección que la generó.
+CREATE TABLE image (
     id            uuid PRIMARY KEY,
+    device_id     bigint NOT NULL REFERENCES device(id),
     detection_id  bigint NOT NULL UNIQUE REFERENCES detection(id),
     content       varchar(20) NOT NULL, --file name imagen
     content_type  varchar(30) NOT NULL DEFAULT 'image/jpeg',
-    saved_at      TIMESTAMP NOT NULL DEFAULT now()
+    saved_at      TIMESTAMP NOT NULL DEFAULT now(),
+    redis_key     varchar(100) NOT NULL,
+    image_expires_at  TIMESTAMP,                                     -- cuándo caduca en Redis
+    UNIQUE (device_id, detection_id)
 );
 
 -- ===============================================================
@@ -151,19 +152,25 @@ CREATE PROCEDURE create_detection(
     p_witdh int,
     p_height int,
     p_alert_image_id uuid,
-    p_filename varchar
+    p_filename varchar,
+    p_image_expires_at timestamp
 )
 AS $$
 BEGIN
-    INSERT INTO detection (device_id, status, redis_key, width, height)
-    VALUES (p_device_id, p_status, p_redis_key, p_witdh, p_height)
+    INSERT INTO detection (device_id, status, width, height)
+    VALUES (p_device_id, p_status, p_witdh, p_height)
     RETURNING id INTO p_id;
 
     INSERT INTO detection_status_history (detection_id, from_status, to_status)
     VALUES (p_id, NULL, p_status);
 
-    INSERT INTO alert_image (id, detection_id, content)
-    VALUES (p_alert_image_id, p_id, p_filename);
+    INSERT INTO image (
+        id, device_id, detection_id, content, redis_key, image_expires_at
+    )
+    VALUES (
+        p_alert_image_id, p_device_id, p_id, p_filename,
+        p_redis_key, p_image_expires_at
+    );
 END;
 $$ LANGUAGE plpgsql;
 
@@ -189,25 +196,18 @@ $$ LANGUAGE plpgsql;
 
 
 -- Cambia el estado de UNA detección y anota el cambio.
--- Devuelve true si cambió; false si no existe o ya estaba en ese estado (no anota nada).
-CREATE FUNCTION change_detection_status(p_id bigint, p_to_status varchar)
-RETURNS boolean AS $$
+CREATE PROCEDURE change_detection_status(p_id bigint, p_to_status varchar)
+AS $$
 DECLARE
     v_from varchar;
 BEGIN
     SELECT d.status INTO v_from
     FROM detection d WHERE d.id = p_id FOR UPDATE;
 
-    IF NOT FOUND OR v_from = p_to_status THEN
-        RETURN false;
-    END IF;
-
     UPDATE detection SET status = p_to_status WHERE id = p_id;
 
     INSERT INTO detection_status_history (detection_id, from_status, to_status)
     VALUES (p_id, v_from, p_to_status);
-
-    RETURN true;
 END;
 $$ LANGUAGE plpgsql;
 
