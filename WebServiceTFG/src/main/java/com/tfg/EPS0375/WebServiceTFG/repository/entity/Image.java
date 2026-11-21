@@ -22,11 +22,11 @@ import java.util.UUID;
 @Setter
 @NoArgsConstructor
 @AllArgsConstructor
-@Table(name = "alert_image", uniqueConstraints = {
-        @UniqueConstraint(name = "alert_image_device_detection_key",
+@Table(name = "image", uniqueConstraints = {
+        @UniqueConstraint(name = "image_device_detection_key",
                 columnNames = {"device_id", "detection_id"})
 })
-public class AlertImage {
+public class Image {
     @Id
     @Column(nullable = false, updatable = false)
     private UUID id;

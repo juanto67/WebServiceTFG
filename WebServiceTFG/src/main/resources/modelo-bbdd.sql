@@ -8,9 +8,9 @@
 --
 -- El id de detection lo genera PostgreSQL como identity.
 --
--- Redis: la imagen se guarda en Redis durante 24 h y alert_image.redis_key guarda la clave
+-- Redis: la imagen se guarda en Redis durante 24 h y image.redis_key guarda la clave
 -- exacta (p. ej. img:{device_id}:{id}). Solo las imágenes de alertas de incendio se
--- conservan, de forma permanente, en alert_image.
+-- conservan, de forma permanente, en image.
 --
 
 -- ---------------------------------------------------------------
@@ -80,7 +80,7 @@ CREATE TABLE detection (
     inference_ms      int CHECK (inference_ms >= 0),                   -- solo la llamada a Ollama
     width             int,
     height            int,
-    has_alert   boolean DEFAULT null                           -- si se guardó en alert_image
+    has_alert   boolean DEFAULT null                           -- si se guardó en image
 );
 
 -- Historial de estados: una fila por cada cambio de detection.status
@@ -100,7 +100,7 @@ CREATE TABLE detection_status_history (
 
 -- ---------------------------------------------------------------
 -- Alertas: dos categorías en la misma tabla (los valores los define el enum del backend)
---   FIRE   alertas de incendio: llevan detection_id (y su imagen en alert_image)
+--   FIRE   alertas de incendio: llevan detection_id (y su imagen en image)
 --   SYSTEM alertas operativas: cámara sin señal (la desactiva el worker), cola saturada...
 --          no llevan detection_id. La alerta NO tiene device_id: el dispositivo de una alerta FIRE se obtiene
 --          por detection.device_id (así no hay dos caminos hasta device)
@@ -127,7 +127,7 @@ CREATE TABLE alert (
 CREATE TABLE image (
     id            uuid PRIMARY KEY,
     device_id     bigint NOT NULL REFERENCES device(id),
-    detection_id  bigint NOT NULL UNIQUE REFERENCES detection(id),
+    detection_id  bigint NOT NULL REFERENCES detection(id),
     content       varchar(20) NOT NULL, --file name imagen
     content_type  varchar(30) NOT NULL DEFAULT 'image/jpeg',
     saved_at      TIMESTAMP NOT NULL DEFAULT now(),
