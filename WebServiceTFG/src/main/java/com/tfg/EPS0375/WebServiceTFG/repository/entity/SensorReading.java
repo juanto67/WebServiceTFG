@@ -14,27 +14,28 @@ import java.time.LocalDateTime;
 public class SensorReading {
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
+    @Column(name = "id")
     private Long id;
 
-    @ManyToOne(fetch = FetchType.LAZY, optional = false)
+    @ManyToOne
     @JoinColumn(name = "device_id", nullable = false)
     private Device device;
 
-    @Column(name = "measured_at", nullable = false, updatable = false)
+    @Column(name = "measured_at", nullable = false)
     private LocalDateTime measuredAt;
 
-    @Column(name = "temperature_c", precision = 5, scale = 2)
+    @Column(name = "temperature_c")
     private BigDecimal temperatureC;
 
-    @Column(name = "humidity_pct", precision = 5, scale = 2)
+    @Column(name = "humidity_pct")
     private BigDecimal humidityPct;
 
     @Column(name = "co2_ppm")
     private Integer co2Ppm;
 
-    @Column(name = "pm25", precision = 6, scale = 2)
+    @Column(name = "pm25")
     private BigDecimal pm25;
 
-    @Column(name = "pm10", precision = 6, scale = 2)
+    @Column(name = "pm10")
     private BigDecimal pm10;
 }

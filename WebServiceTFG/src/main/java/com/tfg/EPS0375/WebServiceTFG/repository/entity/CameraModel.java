@@ -20,12 +20,13 @@ import lombok.Setter;
 public class CameraModel {
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
+    @Column(name = "id")
     private Short id;
 
-    @Column(nullable = false, unique = true, length = 60)
+    @Column(name = "name", nullable = false)
     private String name;
 
-    @Column(name = "transmitted_image_format", nullable = false, length = 20)
+    @Column(name = "transmitted_image_format", nullable = false)
     private String transmittedImageFormat;
 
     public CameraModel(String name, String transmittedImageFormat) {

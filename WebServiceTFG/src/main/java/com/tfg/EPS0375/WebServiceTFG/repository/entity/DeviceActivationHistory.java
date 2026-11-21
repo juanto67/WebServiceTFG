@@ -2,7 +2,6 @@ package com.tfg.EPS0375.WebServiceTFG.repository.entity;
 
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
-import jakarta.persistence.FetchType;
 import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
@@ -24,15 +23,16 @@ import java.time.LocalDateTime;
 public class DeviceActivationHistory {
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
+    @Column(name = "id")
     private Long id;
 
-    @ManyToOne(fetch = FetchType.LAZY, optional = false)
+    @ManyToOne
     @JoinColumn(name = "device_id", nullable = false)
     private Device device;
 
-    @Column(nullable = false)
+    @Column(name = "active", nullable = false)
     private boolean active;
 
-    @Column(name = "changed_at", nullable = false, updatable = false)
+    @Column(name = "changed_at", nullable = false)
     private LocalDateTime changedAt;
 }

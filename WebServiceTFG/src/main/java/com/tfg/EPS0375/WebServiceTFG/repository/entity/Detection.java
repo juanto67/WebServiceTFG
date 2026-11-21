@@ -3,7 +3,6 @@ package com.tfg.EPS0375.WebServiceTFG.repository.entity;
 import com.fasterxml.jackson.databind.JsonNode;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
-import jakarta.persistence.FetchType;
 import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
@@ -28,30 +27,29 @@ import java.time.LocalDateTime;
 public class Detection {
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
+    @Column(name = "id")
     private Long id;
 
-    @ManyToOne(fetch = FetchType.LAZY, optional = false)
+    @ManyToOne
     @JoinColumn(name = "device_id", nullable = false)
     private Device device;
 
-    @Column(nullable = false, length = 20)
+    @Column(name = "status", nullable = false)
     private String status;
-    @Column(name = "received_at", nullable = false, updatable = false)
+    @Column(name = "received_at", nullable = false)
     private LocalDateTime receivedAt;
-    @Column(precision = 4, scale = 3)
+    @Column(name = "probability")
     private BigDecimal probability;
     @JdbcTypeCode(SqlTypes.ARRAY)
-    @Column(name = "indicators", columnDefinition = "text[]")
+    @Column(name = "indicators")
     private String[] indicators;
-    @Column(name = "reason", columnDefinition = "text")
+    @Column(name = "reason")
     private String reason;
     @JdbcTypeCode(SqlTypes.JSON)
-    @Column(name = "raw_response", columnDefinition = "jsonb")
+    @Column(name = "raw_response")
     private JsonNode rawResponse;
     @Column(name = "inference_ms")
     private Integer inferenceMs;
-    private Integer width;
-    private Integer height;
-    @Column(name = "has_alert_image")
-    private Boolean hasAlertImage;
+    @Column(name = "has_alert")
+    private Boolean hasAlert;
 }

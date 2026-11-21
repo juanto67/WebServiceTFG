@@ -18,22 +18,23 @@ import java.time.ZoneId;
 public class Device {
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
+    @Column(name = "id")
     private Long id;
 
-    @Column(name = "name", nullable = false, length = 80)
+    @Column(name = "name", nullable = false)
     private String name;
 
-    @ManyToOne(fetch = FetchType.LAZY, optional = false, cascade = CascadeType.PERSIST)
+    @ManyToOne
     @JoinColumn(name = "camera_model_id", nullable = false)
     private CameraModel cameraModel;
 
     @Column(name = "capture_interval_s", nullable = false)
     private Integer captureIntervalS;
 
-    @Column(name = "created_at", nullable = false, updatable = false)
+    @Column(name = "created_at", nullable = false)
     private LocalDateTime createdAt;
 
-    @Column(name = "mac_address", nullable = false, length = 17)
+    @Column(name = "mac_address", nullable = false)
     private String macAddress;
 
     @Column(name = "latitude")
@@ -45,7 +46,7 @@ public class Device {
     @Column(name = "active", nullable = false)
     private boolean active;
 
-    @Column(name = "board", length = 60)
+    @Column(name = "board")
     private String board;
 
     @Column(name = "last_seen_at")
