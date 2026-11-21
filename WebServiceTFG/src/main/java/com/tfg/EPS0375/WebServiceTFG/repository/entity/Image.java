@@ -34,7 +34,7 @@ public class Image {
     @JoinColumn(name = "device_id", nullable = false)
     private Device device;
     @OneToOne(fetch = FetchType.LAZY, optional = false)
-    @JoinColumn(name = "detection_id", nullable = false, unique = true)
+    @JoinColumn(name = "detection_id", nullable = false)
     private Detection detection;
     @Column(nullable = false, length = 20)
     private String content;
