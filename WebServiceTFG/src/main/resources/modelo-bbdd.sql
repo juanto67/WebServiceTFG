@@ -225,12 +225,13 @@ CREATE OR REPLACE PROCEDURE register_device(
     p_device_name  varchar,
     p_latitude     double precision,
     p_longitude    double precision,
-    INOUT p_device_id        bigint,
-    INOUT p_camera_model_id  smallint
+    INOUT p_device_id bigint
 ) AS $$
+DECLARE
+    v_camera_model_id smallint;
 BEGIN
     -- Cámara: reutilizar la que tenga el mismo name y formato, o crearla
-    SELECT c.id INTO p_camera_model_id
+    SELECT c.id INTO v_camera_model_id
     FROM camera_model c
     WHERE c.name = p_camera_name AND c.transmitted_image_format = p_image_format;
 
@@ -239,12 +240,12 @@ BEGIN
         VALUES (p_camera_name, p_image_format)
         ON CONFLICT (name) DO UPDATE
             SET transmitted_image_format = EXCLUDED.transmitted_image_format
-        RETURNING id INTO p_camera_model_id;
+        RETURNING id INTO v_camera_model_id;
     END IF;
 
     -- Dispositivo: crear o actualizar por mac_address
     INSERT INTO device (name, mac_address, board, camera_model_id, capture_interval_s, latitude, longitude)
-    VALUES (p_device_name, p_mac_address, p_board, p_camera_model_id, p_interval_s, p_latitude, p_longitude)
+    VALUES (p_device_name, p_mac_address, p_board, v_camera_model_id, p_interval_s, p_latitude, p_longitude)
         ON CONFLICT (mac_address) DO UPDATE
         SET name               = EXCLUDED.name,
         board              = EXCLUDED.board,
