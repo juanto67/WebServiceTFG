@@ -34,4 +34,12 @@ public class DeviceRequestDto {
     @JsonProperty("longitude")
     @NotNull
     private Double longitude;
+
+    @JsonProperty("board")
+    @NotBlank
+    private String board;
+
+    @JsonProperty("deviceName")
+    @NotBlank
+    private String deviceName;
 }

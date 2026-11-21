@@ -10,6 +10,7 @@ import org.springframework.web.bind.annotation.*;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.Base64;
 
 @RestController
 @RequestMapping("/controllerESP")
@@ -32,7 +33,7 @@ public class ControllerESP {
             if (base64Image == null || base64Image.length == 0) {
                 return ResponseEntity.badRequest().body("Imagen vacía");
             }
-
+            base64Image = Base64.getDecoder().decode(base64Image);
             Path output = Path.of("received-image.jpg");
 
             Files.write(output, base64Image);
