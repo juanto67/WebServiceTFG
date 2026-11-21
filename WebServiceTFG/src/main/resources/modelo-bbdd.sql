@@ -78,8 +78,6 @@ CREATE TABLE detection (
     reason            text,
     raw_response      jsonb,                                           -- respuesta completa del modelo
     inference_ms      int CHECK (inference_ms >= 0),                   -- solo la llamada a Ollama
-    width             int,
-    height            int,
     has_alert   boolean DEFAULT null                           -- si se guardó en image
 );
 
@@ -132,7 +130,9 @@ CREATE TABLE image (
     content_type  varchar(30) NOT NULL DEFAULT 'image/jpeg',
     saved_at      TIMESTAMP NOT NULL DEFAULT now(),
     redis_key     varchar(100) NOT NULL,
-    image_expires_at  TIMESTAMP,                                     -- cuándo caduca en Redis
+    image_expires_at  TIMESTAMP,    -- cuándo caduca en Redis
+    width             int,
+    height            int,
     UNIQUE (device_id, detection_id)
 );
 
@@ -157,19 +157,19 @@ CREATE PROCEDURE create_detection(
 )
 AS $$
 BEGIN
-    INSERT INTO detection (device_id, status, width, height)
-    VALUES (p_device_id, p_status, p_witdh, p_height)
+    INSERT INTO detection (device_id, status)
+    VALUES (p_device_id, p_status)
     RETURNING id INTO p_id;
 
     INSERT INTO detection_status_history (detection_id, from_status, to_status)
     VALUES (p_id, NULL, p_status);
 
     INSERT INTO image (
-        id, device_id, detection_id, content, redis_key, image_expires_at
+        id, device_id, detection_id, content, redis_key, image_expires_at, width, height
     )
     VALUES (
         p_alert_image_id, p_device_id, p_id, p_filename,
-        p_redis_key, p_image_expires_at
+        p_redis_key, p_image_expires_at, p_witdh, p_height
     );
 END;
 $$ LANGUAGE plpgsql;
@@ -235,10 +235,11 @@ BEGIN
     WHERE c.name = p_camera_name AND c.transmitted_image_format = p_image_format;
 
     IF NOT FOUND THEN
-            INSERT INTO camera_model (name, transmitted_image_format)
-            VALUES (p_camera_name, p_image_format)
-            ON CONFLICT DO NOTHING
-            RETURNING id INTO p_camera_model_id;
+        INSERT INTO camera_model (name, transmitted_image_format)
+        VALUES (p_camera_name, p_image_format)
+        ON CONFLICT (name) DO UPDATE
+            SET transmitted_image_format = EXCLUDED.transmitted_image_format
+        RETURNING id INTO p_camera_model_id;
     END IF;
 
     -- Dispositivo: crear o actualizar por mac_address

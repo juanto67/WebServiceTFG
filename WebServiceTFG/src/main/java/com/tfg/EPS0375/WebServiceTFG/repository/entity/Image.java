@@ -46,4 +46,8 @@ public class Image {
     private String redisKey;
     @Column(name = "image_expires_at")
     private LocalDateTime imageExpiresAt;
+    @Column(name = "width")
+    private Integer width;
+    @Column(name = "height")
+    private Integer height;
 }
