@@ -10,6 +10,7 @@ import org.springframework.web.bind.annotation.*;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.Base64;
 
 @RestController
 @RequestMapping("/controllerESP")
@@ -27,12 +28,13 @@ public class ControllerESP {
             @RequestBody byte[] base64Image,
             @RequestHeader("X-Width") int width,
             @RequestHeader("X-Height") int height,
-            @RequestHeader("X-Format") String format) {
+            @RequestHeader("X-Format") String format,
+            @RequestHeader("X-Device-Id") String deviceId) {
         try {
             if (base64Image == null || base64Image.length == 0) {
                 return ResponseEntity.badRequest().body("Imagen vacía");
             }
-
+            base64Image = Base64.getDecoder().decode(base64Image);
             Path output = Path.of("received-image.jpg");
 
             Files.write(output, base64Image);
@@ -46,8 +48,8 @@ public class ControllerESP {
     }
 
     @PostMapping("/newDevice")
-    public ResponseEntity<String> catchNewDevice(@Valid @RequestBody DeviceRequestDto deviceRequestDto) {
-        String id = serviceESPInfo.getCameraId(deviceRequestDto);
+    public ResponseEntity<Long> catchNewDevice(@Valid @RequestBody DeviceRequestDto deviceRequestDto) {
+        Long id = serviceESPInfo.getCameraId(deviceRequestDto);
         return ResponseEntity.ok(id);
     }
 }
