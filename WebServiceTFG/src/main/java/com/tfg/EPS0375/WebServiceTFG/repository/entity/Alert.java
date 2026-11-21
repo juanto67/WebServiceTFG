@@ -37,7 +37,7 @@ public class Alert {
     @Column(name = "description")
     private String description;
     @ManyToOne
-    @JoinColumn(name = "detection_id")
+    @JoinColumn(name = "detection_id", nullable = false)
     private Detection detection;
     @Column(name = "risk_score")
     private BigDecimal riskScore;

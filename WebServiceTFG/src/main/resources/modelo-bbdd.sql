@@ -112,7 +112,7 @@ CREATE TABLE alert (
     severity        varchar(20) NOT NULL,                             -- p. ej. LOW, MEDIUM, HIGH
     title           varchar(120) NOT NULL,
     description     text,
-    detection_id    bigint UNIQUE REFERENCES detection(id),            -- solo FIRE; como máximo una alerta por detección
+    detection_id    bigint not null UNIQUE REFERENCES detection(id),            -- solo FIRE; como máximo una alerta por detección
     risk_score      numeric(4,3) CHECK (risk_score BETWEEN 0 AND 1),  -- tras fusionar con sensores (solo FIRE)
     status          varchar(20) NOT NULL,                             -- p. ej. OPEN, ACKNOWLEDGED, RESOLVED, FALSE_POSITIVE
     created_at      TIMESTAMP NOT NULL DEFAULT now(),
