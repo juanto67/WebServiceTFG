@@ -143,9 +143,11 @@ CREATE TABLE image (
 
 -- Crea la detección, su imagen asociada y anota la primera fila del historial
 -- (NULL -> estado inicial).
--- Devuelve la hora de llegada (received_at).
-CREATE PROCEDURE create_detection(
-    INOUT p_id bigint,
+DROP PROCEDURE IF EXISTS create_detection(
+    bigint, bigint, varchar, varchar, int, int, uuid, varchar, timestamp
+);
+
+CREATE OR REPLACE FUNCTION create_detection(
     p_device_id bigint,
     p_status varchar,
     p_redis_key varchar,
@@ -154,23 +156,33 @@ CREATE PROCEDURE create_detection(
     p_alert_image_id uuid,
     p_filename varchar,
     p_image_expires_at timestamp
-)
-AS $$
+) RETURNS bigint AS $$
+DECLARE
+    v_id bigint;
 BEGIN
     INSERT INTO detection (device_id, status)
     VALUES (p_device_id, p_status)
-    RETURNING id INTO p_id;
+    RETURNING id INTO v_id;
 
     INSERT INTO detection_status_history (detection_id, from_status, to_status)
-    VALUES (p_id, NULL, p_status);
+    VALUES (v_id, NULL, p_status);
 
-    INSERT INTO image (
-        id, device_id, detection_id, content, redis_key, image_expires_at, width, height
-    )
-    VALUES (
-        p_alert_image_id, p_device_id, p_id, p_filename,
-        p_redis_key, p_image_expires_at, p_witdh, p_height
-    );
+    IF p_alert_image_id IS NOT NULL AND p_filename IS NOT NULL THEN
+        INSERT INTO image (
+            id, device_id, detection_id, content, redis_key,
+            image_expires_at, width, height
+        )
+        VALUES (
+            p_alert_image_id, p_device_id, v_id, p_filename,
+            p_redis_key, p_image_expires_at, p_witdh, p_height
+        );
+
+        UPDATE detection
+        SET has_alert = true
+        WHERE id = v_id;
+    END IF;
+
+    RETURN v_id;
 END;
 $$ LANGUAGE plpgsql;
 
@@ -216,7 +228,8 @@ $$ LANGUAGE plpgsql;
 --     si no, se crea.
 --   * device: si ya existe uno con esa mac_address se actualizan sus datos (name, board, modelo de
 --     cámara, intervalo, latitud y longitud); si no, se crea. No toca active, created_at ni last_seen_at.
-CREATE OR REPLACE PROCEDURE register_device(
+
+CREATE OR REPLACE FUNCTION register_device(
     p_board        varchar,
     p_camera_name  varchar,
     p_image_format varchar,
@@ -224,11 +237,11 @@ CREATE OR REPLACE PROCEDURE register_device(
     p_interval_s  bigint,
     p_device_name  varchar,
     p_latitude     double precision,
-    p_longitude    double precision,
-    INOUT p_device_id bigint
-) AS $$
+    p_longitude    double precision
+) RETURNS bigint AS $$
 DECLARE
     v_camera_model_id smallint;
+    v_device_id bigint;
 BEGIN
     -- Cámara: reutilizar la que tenga el mismo name y formato, o crearla
     SELECT c.id INTO v_camera_model_id
@@ -253,6 +266,8 @@ BEGIN
         capture_interval_s = EXCLUDED.capture_interval_s,
         latitude           = EXCLUDED.latitude,
         longitude          = EXCLUDED.longitude
-        RETURNING id INTO p_device_id;
+        RETURNING id INTO v_device_id;
+
+    RETURN v_device_id;
 END;
 $$ LANGUAGE plpgsql;

@@ -28,7 +28,8 @@ public class ControllerESP {
             @RequestBody byte[] base64Image,
             @RequestHeader("X-Width") int width,
             @RequestHeader("X-Height") int height,
-            @RequestHeader("X-Format") String format) {
+            @RequestHeader("X-Format") String format,
+            @RequestHeader("X-Device-Id") String deviceId) {
         try {
             if (base64Image == null || base64Image.length == 0) {
                 return ResponseEntity.badRequest().body("Imagen vacía");

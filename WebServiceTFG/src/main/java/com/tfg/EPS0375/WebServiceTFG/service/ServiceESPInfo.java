@@ -23,7 +23,6 @@ public class ServiceESPInfo {
                 (long) deviceRequestDto.getFrequencyImage(),
                 deviceRequestDto.getDeviceName(),
                 deviceRequestDto.getLatitude(),
-                deviceRequestDto.getLongitude(),
-                null);
+                deviceRequestDto.getLongitude());
     }
 }
