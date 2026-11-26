@@ -47,7 +47,7 @@ public class ServiceESPImage {
         String imageName = "img_" + imageId;
         String redisKey = deviceId + ":" + imageId;
 
-        imageStorageService.saveImage(imageId, base64Image);
+        imageStorageService.saveImage(imageId, base64Image, format);
 
         detectionRepository.createDetection(
                 deviceId,

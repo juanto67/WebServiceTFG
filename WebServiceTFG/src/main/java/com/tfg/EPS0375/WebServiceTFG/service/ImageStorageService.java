@@ -4,7 +4,7 @@ import java.io.IOException;
 import java.util.UUID;
 
 public interface ImageStorageService {
-    void saveImage(UUID imageId, byte[] base64Image) throws IOException;
+    void saveImage(UUID imageId, byte[] base64Image, String format) throws IOException;
 
-    byte[] getImage(UUID imageId) throws IOException;
+    byte[] getImage(UUID imageId, String format) throws IOException;
 }
