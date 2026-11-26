@@ -126,7 +126,7 @@ CREATE TABLE image (
     id            uuid PRIMARY KEY,
     device_id     bigint NOT NULL REFERENCES device(id),
     detection_id  bigint NOT NULL REFERENCES detection(id),
-    content       varchar(20) NOT NULL, --file name imagen
+    content       varchar(40) NOT NULL, -- file name img_<uuid>
     content_type  varchar(30) NOT NULL DEFAULT 'image/jpeg',
     saved_at      TIMESTAMP NOT NULL DEFAULT now(),
     redis_key     varchar(100) NOT NULL,

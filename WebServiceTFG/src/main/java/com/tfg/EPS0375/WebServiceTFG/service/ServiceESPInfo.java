@@ -7,7 +7,7 @@ import org.springframework.stereotype.Service;
 
 @Service
 public class ServiceESPInfo {
-    public final IDeviceRepository repository;
+    private final IDeviceRepository repository;
 
     @Autowired
     public ServiceESPInfo(IDeviceRepository repository) {
@@ -23,6 +23,7 @@ public class ServiceESPInfo {
                 (long) deviceRequestDto.getFrequencyImage(),
                 deviceRequestDto.getDeviceName(),
                 deviceRequestDto.getLatitude(),
-                deviceRequestDto.getLongitude());
+                deviceRequestDto.getLongitude()
+        );
     }
 }
