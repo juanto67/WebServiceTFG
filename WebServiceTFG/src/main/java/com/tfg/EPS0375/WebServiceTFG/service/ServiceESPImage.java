@@ -41,6 +41,8 @@ public class ServiceESPImage {
             throw new ImageFormatMismatchException(expectedFormat, format);
         }
 
+        deviceRepository.deviceSeen(deviceId);
+
         UUID imageId = UUID.randomUUID();
         String imageName = "img_" + imageId;
         String redisKey = deviceId + ":" + imageId;
