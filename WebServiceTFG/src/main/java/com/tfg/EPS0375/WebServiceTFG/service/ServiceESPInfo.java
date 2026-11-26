@@ -18,7 +18,7 @@ public class ServiceESPInfo {
         return repository.registerDevice(
                 deviceRequestDto.getBoard(),
                 deviceRequestDto.getCameraName(),
-                deviceRequestDto.getTransmittedImageFormat(),
+                deviceRequestDto.getTransmittedImageFormat().toUpperCase(),
                 deviceRequestDto.getMacAddress(),
                 (long) deviceRequestDto.getFrequencyImage(),
                 deviceRequestDto.getDeviceName(),
