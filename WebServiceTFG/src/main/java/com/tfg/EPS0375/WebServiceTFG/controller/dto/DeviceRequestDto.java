@@ -11,9 +11,9 @@ import lombok.*;
 @AllArgsConstructor
 @Data
 public class DeviceRequestDto {
-    @JsonProperty("cameraModel")
+    @JsonProperty("cameraName")
     @NotBlank
-    private String cameraModel;
+    private String cameraName;
 
     @JsonProperty("frequencyImage")
     @NotNull
@@ -34,4 +34,12 @@ public class DeviceRequestDto {
     @JsonProperty("longitude")
     @NotNull
     private Double longitude;
+
+    @JsonProperty("board")
+    @NotBlank
+    private String board;
+
+    @JsonProperty("deviceName")
+    @NotBlank
+    private String deviceName;
 }
