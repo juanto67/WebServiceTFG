@@ -1,17 +1,5 @@
 -- TFG: Sistema inteligente de detección temprana de incendios
 -- Esquema PostgreSQL
---
--- Enumerados: los estados de detección y los de las alertas (status, category, alert_type,
--- severity) NO se definen aquí. La base de datos solo guarda el texto y los valores válidos
--- los define el enum del backend (en Spring Boot: @Enumerated(EnumType.STRING)).
--- Los valores que aparecen en los comentarios son solo orientativos.
---
--- El id de detection lo genera PostgreSQL como identity.
---
--- Redis: la imagen se guarda en Redis durante 24 h y image.redis_key guarda la clave
--- exacta (p. ej. img:{device_id}:{id}). Solo las imágenes de alertas de incendio se
--- conservan, de forma permanente, en image.
---
 
 -- ---------------------------------------------------------------
 -- Dispositivos
@@ -38,7 +26,7 @@ CREATE TABLE device (
 );
 
 -- Historial de activación: una fila cada vez que active cambia de valor.
--- Lo escriben device_seen() y deactivate_stale_devices(), en la misma sentencia que cambia device.active.
+-- Lo escriben device_seen(), en la misma sentencia que cambia device.active.
 CREATE TABLE device_activation_history (
     id          bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
     device_id   bigint NOT NULL REFERENCES device(id) ON DELETE CASCADE,
@@ -64,7 +52,7 @@ CREATE TABLE sensor_reading (
 --
 -- id: lo genera PostgreSQL como identity.
 -- status: lo escribe el backend con su enum (p. ej. PENDING, PROCESSING, DONE, ERROR, DISCARDED).
---         Aquí solo está el estado ACTUAL; el recorrido completo está en detection_status_history.
+-- Aquí solo está el estado ACTUAL; el recorrido completo está en detection_status_history.
 -- received_at: cuándo llegó. Sirve para ordenar la cola sin hacer un join.
 -- ---------------------------------------------------------------
 
